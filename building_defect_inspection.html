@@ -541,6 +541,7 @@ function setupCanvas() {
   canvas.ontouchstart = e => { e.preventDefault(); const r = canvas.getBoundingClientRect(), t = e.touches[0]; startD(t.clientX-r.left, t.clientY-r.top); };
   canvas.ontouchmove = e => { e.preventDefault(); const r = canvas.getBoundingClientRect(), t = e.touches[0]; moveD(t.clientX-r.left, t.clientY-r.top); };
   canvas.ontouchend = e => { e.preventDefault(); endD(sx+2, sy+2); };
+  initFloatDrag();
 }
 function startD(x,y) { drawing=true; sx=x; sy=y; }
 function moveD(x,y) {
@@ -548,13 +549,70 @@ function moveD(x,y) {
   redraw();
   drawShape(document.getElementById('main-canvas').getContext('2d'), currentTool, sx, sy, x, y, MARK_COLOR, false, 0);
 }
+let floatMark = null; // 2本目の浮遊中マーク
+let draggingFloat = false, dfsx=0, dfsy=0;
+
 function endD(x,y) {
   if(!drawing) return; drawing=false;
   if(Math.abs(x-sx)<4 && Math.abs(y-sy)<4) return;
-  marks.push({id:Date.now(), type:currentTool, x1:sx, y1:sy, x2:x, y2:y, angle:0});
+  if(currentTool==='arrow') {
+    // 1本目フィックス
+    const id1 = Date.now();
+    marks.push({id:id1, type:'arrow', x1:sx, y1:sy, x2:x, y2:y, angle:0});
+    // 2本目フロート（平行に8pxオフセット）
+    const dx=x-sx, dy=y-sy, len=Math.sqrt(dx*dx+dy*dy)||1;
+    const ox=-dy/len*12, oy=dx/len*12;
+    floatMark = {id:id1+1, type:'arrow', x1:sx+ox, y1:sy+oy, x2:x+ox, y2:y+oy, angle:0};
+  } else {
+    marks.push({id:Date.now(), type:currentTool, x1:sx, y1:sy, x2:x, y2:y, angle:0});
+    floatMark = null;
+  }
   redraw();
   updateMarkList();
   document.getElementById('btn2').disabled = false;
+}
+
+// フロートマークのドラッグ
+function initFloatDrag() {
+  const canvas = document.getElementById('main-canvas');
+  canvas.addEventListener('mousedown', floatDown);
+  canvas.addEventListener('mousemove', floatMove);
+  canvas.addEventListener('mouseup', floatUp);
+  canvas.addEventListener('touchstart', e=>{if(floatMark){e.preventDefault();const r=canvas.getBoundingClientRect(),t=e.touches[0];floatDown({offsetX:t.clientX-r.left,offsetY:t.clientY-r.top});}},{passive:false});
+  canvas.addEventListener('touchmove', e=>{if(draggingFloat){e.preventDefault();const r=canvas.getBoundingClientRect(),t=e.touches[0];floatMove({offsetX:t.clientX-r.left,offsetY:t.clientY-r.top});}},{passive:false});
+  canvas.addEventListener('touchend', e=>{if(draggingFloat){e.preventDefault();floatUp({});}},{passive:false});
+}
+
+function floatDown(e) {
+  if(!floatMark || drawing) return;
+  const fm = floatMark;
+  const cx=(fm.x1+fm.x2)/2, cy=(fm.y1+fm.y2)/2;
+  const dist = Math.sqrt((e.offsetX-cx)**2+(e.offsetY-cy)**2);
+  if(dist < 40) { draggingFloat=true; dfsx=e.offsetX; dfsy=e.offsetY; }
+}
+function floatMove(e) {
+  if(!draggingFloat || !floatMark) return;
+  const ddx=e.offsetX-dfsx, ddy=e.offsetY-dfsy;
+  // 矢印の方向ベクトルに垂直な方向のみ移動（平行移動）
+  const dx=floatMark.x2-floatMark.x1, dy=floatMark.y2-floatMark.y1;
+  const len=Math.sqrt(dx*dx+dy*dy)||1;
+  const nx=-dy/len, ny=dx/len; // 法線ベクトル
+  const proj=(ddx*nx+ddy*ny); // 法線方向の投影
+  floatMark.x1+=proj*nx; floatMark.y1+=proj*ny;
+  floatMark.x2+=proj*nx; floatMark.y2+=proj*ny;
+  dfsx=e.offsetX; dfsy=e.offsetY;
+  redraw();
+}
+function floatUp(e) {
+  if(!draggingFloat) return;
+  draggingFloat=false;
+}
+
+function fixFloat() {
+  if(!floatMark) return;
+  marks.push({...floatMark});
+  floatMark=null;
+  redraw(); updateMarkList();
 }
 function drawShape(ctx, type, x1, y1, x2, y2, color, fill, angle) {
   ctx.strokeStyle = color;
@@ -593,10 +651,18 @@ function redraw() {
     const ly = Math.min(m.y1,m.y2)-4;
     ctx.fillText(i+1, lx, ly < 10 ? ly+18 : ly);
   });
+  // フロートマークは点線で描画
+  if(floatMark) {
+    ctx.save();
+    ctx.setLineDash([6,4]);
+    drawShape(ctx, floatMark.type, floatMark.x1, floatMark.y1, floatMark.x2, floatMark.y2, '#FF8800', true, 0);
+    ctx.restore();
+    ctx.setLineDash([]);
+  }
 }
 function updateMarkList() {
   const lbl = {arrow:'矢印（ひび割れ）', rect:'四角（タイル浮き）', ellipse:'楕円（その他）'};
-  document.getElementById('mark-list').innerHTML = marks.map((m,i) => {
+  let html = marks.map((m,i) => {
     const editBtns = m.type==='ellipse' || m.type==='rect'
       ? `<button class="btn-sm" onclick="rotMark(${m.id},-15)" style="padding:3px 8px;font-size:15px">↺</button>
          <button class="btn-sm" onclick="rotMark(${m.id},15)" style="padding:3px 8px;font-size:15px">↻</button>`
@@ -608,6 +674,16 @@ function updateMarkList() {
       <button class="mark-del" onclick="delMark(${m.id})">×</button>
     </div>`;
   }).join('');
+  // フロートマークのフィックスボタン
+  if(floatMark) {
+    html += `<div class="mark-item" style="background:#FFF3E0;border-color:#FF8800">
+      <span class="mark-dot" style="background:#FF8800"></span>
+      <span style="flex:1;color:#FF8800;font-weight:700">2本目（ドラッグで移動）</span>
+      <button class="btn-sm" onclick="fixFloat()" style="background:#FF8800;color:white;border-color:#FF8800;padding:4px 10px">確定</button>
+      <button class="mark-del" onclick="floatMark=null;redraw();updateMarkList()">×</button>
+    </div>`;
+  }
+  document.getElementById('mark-list').innerHTML = html;
 }
 function rotMark(id, deg) {
   const m = marks.find(m=>m.id===id);
