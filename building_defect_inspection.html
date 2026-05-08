@@ -543,41 +543,59 @@ function setupCanvas() {
   canvas.ontouchend = e => { e.preventDefault(); endD(sx+2, sy+2); };
 }
 function startD(x,y) { drawing=true; sx=x; sy=y; }
-function moveD(x,y) { if(!drawing) return; redraw(); drawShape(document.getElementById('main-canvas').getContext('2d'), currentTool, sx, sy, x, y, COLORS[currentTool], false); }
+function moveD(x,y) { if(!drawing) return; redraw(); drawShape(document.getElementById('main-canvas').getContext('2d'), currentTool, sx, sy, x, y, '#E53030', false); }
 function endD(x,y) {
   if(!drawing) return; drawing=false;
   if(Math.abs(x-sx)<4 && Math.abs(y-sy)<4) return;
-  marks.push({id:Date.now(), type:currentTool, x1:sx, y1:sy, x2:x, y2:y});
+  marks.push({id:Date.now(), type:currentTool, x1:sx, y1:sy, x2:x, y2:y, angle:0});
   redraw(); updateMarkList();
   document.getElementById('btn2').disabled = false;
 }
-function drawShape(ctx, type, x1, y1, x2, y2, color, fill) {
-  ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.fillStyle=color+'33';
+function drawShape(ctx, type, x1, y1, x2, y2, color, fill, angle) {
+  ctx.strokeStyle=color; ctx.lineWidth=3; ctx.fillStyle=color+'33';
   if(type==='arrow') {
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // 両端矢印
     const a=Math.atan2(y2-y1,x2-x1), L=14;
-    ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2-L*Math.cos(a-0.4),y2-L*Math.sin(a-0.4)); ctx.lineTo(x2-L*Math.cos(a+0.4),y2-L*Math.sin(a+0.4)); ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // 終点矢印
+    ctx.beginPath(); ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-L*Math.cos(a-0.4),y2-L*Math.sin(a-0.4));
+    ctx.lineTo(x2-L*Math.cos(a+0.4),y2-L*Math.sin(a+0.4));
+    ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+    // 始点矢印
+    ctx.beginPath(); ctx.moveTo(x1,y1);
+    ctx.lineTo(x1+L*Math.cos(a-0.4),y1+L*Math.sin(a-0.4));
+    ctx.lineTo(x1+L*Math.cos(a+0.4),y1+L*Math.sin(a+0.4));
+    ctx.closePath(); ctx.fillStyle=color; ctx.fill();
   } else if(type==='rect') {
     ctx.beginPath(); ctx.rect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1)); if(fill) ctx.fill(); ctx.stroke();
   } else {
     const cx=(x1+x2)/2, cy=(y1+y2)/2, rx=Math.abs(x2-x1)/2||4, ry=Math.abs(y2-y1)/2||4;
-    ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,0,2*Math.PI); if(fill) ctx.fill(); ctx.stroke();
+    const rot = angle||0;
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot);
+    ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,2*Math.PI); if(fill) ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
 }
 function redraw() {
   const c = document.getElementById('main-canvas'); if(!c||!farImgEl) return;
   const ctx = c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height); ctx.drawImage(farImgEl,0,0,c.width,c.height);
   marks.forEach((m,i) => {
-    drawShape(ctx, m.type, m.x1, m.y1, m.x2, m.y2, COLORS[m.type], true);
-    ctx.fillStyle=COLORS[m.type]; ctx.font='bold 13px sans-serif';
+    drawShape(ctx, m.type, m.x1, m.y1, m.x2, m.y2, '#E53030', true, m.angle||0);
+    ctx.fillStyle='#E53030'; ctx.font='bold 13px sans-serif';
     ctx.fillText(i+1, Math.min(m.x1,m.x2)+3, Math.min(m.y1,m.y2)-4);
   });
 }
 function updateMarkList() {
   const lbl = {arrow:'矢印（ひび割れ）', rect:'四角（タイル浮き）', ellipse:'楕円（その他）'};
-  document.getElementById('mark-list').innerHTML = marks.map((m,i) =>
-    `<div class="mark-item"><span class="mark-dot" style="background:${COLORS[m.type]}"></span><span style="flex:1">指摘${i+1}：${lbl[m.type]}</span><button class="mark-del" onclick="delMark(${m.id})">×</button></div>`
-  ).join('');
+  document.getElementById('mark-list').innerHTML = marks.map((m,i) => {
+    const rotBtn = m.type==='ellipse' ? `<button class="btn-sm" onclick="rotateEllipse(${m.id},-15)" style="padding:2px 7px">↺</button><button class="btn-sm" onclick="rotateEllipse(${m.id},15)" style="padding:2px 7px">↻</button>` : '';
+    return `<div class="mark-item"><span class="mark-dot" style="background:#E53030"></span><span style="flex:1">指摘${i+1}：${lbl[m.type]}</span>${rotBtn}<button class="mark-del" onclick="delMark(${m.id})">×</button></div>`;
+  }).join('');
+}
+function rotateEllipse(id, deg) {
+  const m = marks.find(m=>m.id===id);
+  if(m) { m.angle = (m.angle||0) + deg * Math.PI/180; redraw(); }
 }
 function delMark(id) { marks=marks.filter(m=>m.id!==id); redraw(); updateMarkList(); document.getElementById('btn2').disabled=marks.length===0; }
 function undoMark() { if(marks.length){marks.pop(); redraw(); updateMarkList(); document.getElementById('btn2').disabled=marks.length===0;} }
