@@ -543,7 +543,7 @@ function setupCanvas() {
   canvas.ontouchend = e => { e.preventDefault(); endD(sx+2, sy+2); };
 }
 function startD(x,y) { drawing=true; sx=x; sy=y; }
-function moveD(x,y) { if(!drawing) return; redraw(); drawShape(document.getElementById('main-canvas').getContext('2d'), currentTool, sx, sy, x, y, '#E53030', false); }
+function moveD(x,y) { if(!drawing) return; redraw(); drawShape(document.getElementById('main-canvas').getContext('2d'), currentTool, sx, sy, x, y, '#E53030', false, 0); }
 function endD(x,y) {
   if(!drawing) return; drawing=false;
   if(Math.abs(x-sx)<4 && Math.abs(y-sy)<4) return;
@@ -554,18 +554,12 @@ function endD(x,y) {
 function drawShape(ctx, type, x1, y1, x2, y2, color, fill, angle) {
   ctx.strokeStyle=color; ctx.lineWidth=3; ctx.fillStyle=color+'33';
   if(type==='arrow') {
-    // 両端矢印
-    const a=Math.atan2(y2-y1,x2-x1), L=14;
+    // 片方向矢印（終点のみ）
+    const a=Math.atan2(y2-y1,x2-x1), L=16;
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    // 終点矢印
     ctx.beginPath(); ctx.moveTo(x2,y2);
     ctx.lineTo(x2-L*Math.cos(a-0.4),y2-L*Math.sin(a-0.4));
     ctx.lineTo(x2-L*Math.cos(a+0.4),y2-L*Math.sin(a+0.4));
-    ctx.closePath(); ctx.fillStyle=color; ctx.fill();
-    // 始点矢印
-    ctx.beginPath(); ctx.moveTo(x1,y1);
-    ctx.lineTo(x1+L*Math.cos(a-0.4),y1+L*Math.sin(a-0.4));
-    ctx.lineTo(x1+L*Math.cos(a+0.4),y1+L*Math.sin(a+0.4));
     ctx.closePath(); ctx.fillStyle=color; ctx.fill();
   } else if(type==='rect') {
     ctx.beginPath(); ctx.rect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1)); if(fill) ctx.fill(); ctx.stroke();
@@ -589,7 +583,9 @@ function redraw() {
 function updateMarkList() {
   const lbl = {arrow:'矢印（ひび割れ）', rect:'四角（タイル浮き）', ellipse:'楕円（その他）'};
   document.getElementById('mark-list').innerHTML = marks.map((m,i) => {
-    const rotBtn = m.type==='ellipse' ? `<button class="btn-sm" onclick="rotateEllipse(${m.id},-15)" style="padding:2px 7px">↺</button><button class="btn-sm" onclick="rotateEllipse(${m.id},15)" style="padding:2px 7px">↻</button>` : '';
+    const rotBtn = m.type==='ellipse'
+      ? `<button class="btn-sm" onclick="rotateEllipse(${m.id},-15)" style="padding:3px 9px;font-size:14px">↺</button><button class="btn-sm" onclick="rotateEllipse(${m.id},15)" style="padding:3px 9px;font-size:14px">↻</button>`
+      : '';
     return `<div class="mark-item"><span class="mark-dot" style="background:#E53030"></span><span style="flex:1">指摘${i+1}：${lbl[m.type]}</span>${rotBtn}<button class="mark-del" onclick="delMark(${m.id})">×</button></div>`;
   }).join('');
 }
